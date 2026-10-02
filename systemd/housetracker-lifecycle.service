@@ -1,0 +1,12 @@
+[Unit]
+Description=HouseTracker daily lifecycle sweep (sold-detection, asking prices, realized prices)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Edit WorkingDirectory/ExecStart paths if the checkout is not ~/HouseTracker.
+WorkingDirectory=%h/HouseTracker
+# HT_APP_URL and the keys live in this owner-made file (mode 600); "-" = optional.
+EnvironmentFile=-%h/.config/housetracker.env
+ExecStart=%h/HouseTracker/.venv/bin/python -m housetracker --db %h/HouseTracker/data/housetracker.db lifecycle

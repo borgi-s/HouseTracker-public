@@ -1,0 +1,20 @@
+[Unit]
+Description=HouseTracker JSON API (Tailscale-bound)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Edit WorkingDirectory/ExecStart paths if the checkout is not ~/HouseTracker.
+WorkingDirectory=%h/HouseTracker
+# Bind one private address (a Tailscale IP or a LAN IP): there is no login, so network
+# membership is the auth. HT_HOST comes from the env file; `serve` refuses an empty one.
+# The unit retries because a tailscale0 address may not exist yet at boot.
+ExecStart=%h/HouseTracker/.venv/bin/python -m housetracker --db %h/HouseTracker/data/housetracker.db serve --host ${HT_HOST} --port 8765
+Restart=on-failure
+RestartSec=5
+# HT_HOST, HT_APP_URL and the keys live in this owner-made file (mode 600); "-" = optional.
+EnvironmentFile=-%h/.config/housetracker.env
+
+[Install]
+WantedBy=default.target
