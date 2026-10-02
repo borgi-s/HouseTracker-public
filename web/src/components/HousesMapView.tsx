@@ -5,10 +5,11 @@ import { useAnchors } from '@/api/queries'
 import type { Anchor, HouseListItem, Person } from '@/api/types'
 import { HousesMap } from '@/components/HousesMap'
 import { OpenHousePill } from '@/components/OpenHouse'
+import { Price } from '@/components/Price'
 import { PriceDrop } from '@/components/PriceDrop'
 import { Button } from '@/components/ui/button'
 import { mainAnchor } from '@/lib/compare'
-import { km, money, num, score5 } from '@/lib/format'
+import { km, num, score5 } from '@/lib/format'
 import { distanceKm } from '@/lib/geo'
 import { openHouseLook } from '@/lib/openhouse'
 import { useIsDesktop } from '@/lib/useIsDesktop'
@@ -48,7 +49,7 @@ function Row({ house: h, pair, anchor, active, onSelect }: {
         ? <img src={h.cover_url} alt="" loading="lazy" className="aspect-[4/3] w-full rounded-xl object-cover" />
         : <div className="aspect-[4/3] w-full rounded-xl bg-muted" />}
       <div className="min-w-0 space-y-0.5">
-        <p className="flex flex-wrap items-center gap-2 text-lg font-bold">{money(h.price_dkk)}<PriceDrop original={h.original_price_dkk} price={h.price_dkk} />{openHouseLook(h.status) && <OpenHousePill slots={h.open_houses} />}</p>
+        <p className="flex flex-wrap items-center gap-2 text-lg font-bold"><Price price={h.price_dkk} sold={h.sold_price_dkk} /><PriceDrop original={h.original_price_dkk} price={h.price_dkk} />{openHouseLook(h.status) && <OpenHousePill slots={h.open_houses} />}</p>
         <Link to={`/house/${encodeURIComponent(h.id)}`} className="relative z-10 block truncate font-semibold hover:underline">{h.address}</Link>
         <p className="text-[13px] text-muted-foreground" title="Straight-line distance">
           {[num(h.size_m2, 'm²'), h.energy_label && `Energi ${h.energy_label}`, away(h, anchor)].filter(Boolean).join(' · ')}
@@ -65,7 +66,7 @@ function PopupCard({ house: h, pair, anchor }: { house: HouseListItem; pair: Per
     <Link to={`/house/${encodeURIComponent(h.id)}`} className="block w-72">
       {h.cover_url && <img src={h.cover_url} alt="" className="h-32 w-full object-cover" />}
       <div className="space-y-0.5 p-3.5">
-        <p className="flex flex-wrap items-center gap-2 font-bold">{money(h.price_dkk)}<PriceDrop original={h.original_price_dkk} price={h.price_dkk} />{openHouseLook(h.status) && <OpenHousePill slots={h.open_houses} />}</p>
+        <p className="flex flex-wrap items-center gap-2 font-bold"><Price price={h.price_dkk} sold={h.sold_price_dkk} /><PriceDrop original={h.original_price_dkk} price={h.price_dkk} />{openHouseLook(h.status) && <OpenHousePill slots={h.open_houses} />}</p>
         <p className="font-semibold">{h.address}</p>
         <p className="text-[13px] text-muted-foreground">
           {[num(h.size_m2, 'm²'), h.energy_label && `Energi ${h.energy_label}`, away(h, anchor)].filter(Boolean).join(' · ')}

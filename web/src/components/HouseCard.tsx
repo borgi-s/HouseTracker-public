@@ -2,6 +2,7 @@ import { Link } from 'react-router'
 import type { HouseListItem, Person } from '@/api/types'
 import { STATUS_LABELS } from '@/api/types'
 import { OpenHouseBand, OpenHousePill } from '@/components/OpenHouse'
+import { Price } from '@/components/Price'
 import { PriceDrop } from '@/components/PriceDrop'
 import { ScoreRing } from '@/components/ScoreRing'
 import { combined, money, num, score5 } from '@/lib/format'
@@ -39,7 +40,7 @@ export function HouseCard({ house: h, pair, selected, onToggle }: {
       <div className="flex flex-1 flex-col gap-1 px-1 pt-4">
         <div className="flex items-baseline justify-between gap-2">
           <span className="flex flex-wrap items-center gap-2">
-            <span className="text-[22px] font-bold tracking-tight">{money(h.price_dkk)}</span>
+            <span className="text-[22px] font-bold tracking-tight"><Price price={h.price_dkk} sold={h.sold_price_dkk} /></span>
             <PriceDrop original={h.original_price_dkk} price={h.price_dkk} />
             {look === 'pill' && <OpenHousePill slots={h.open_houses} />}
           </span>
