@@ -23,7 +23,7 @@ export function WhereWeStand({ detail }: { detail: HouseDetail }) {
         {sentence && <p className="text-[15px] leading-relaxed">{sentence}</p>}
         <NotesPanel detail={detail} />
       </div>
-      <ScoresPanel detail={detail} />
+      <ScoresPanel key={detail.house.id} detail={detail} />   {/* another house starts with no draft */}
     </section>
   )
 }

@@ -34,7 +34,8 @@ def test_house_detail_assembles_everything(api):
     a, _ = _seed(api)
     d = api.get(f"/api/houses/{a}").json()
     assert d["house"]["id"] == a
-    assert d["status_history"] == [{"status": "not_visited", "at": "2026-09-20"}]
+    assert d["status_history"] == [{"status": "not_visited", "at": "2026-09-20"},   # scored
+                                   {"status": "visited", "at": "2026-09-20"}]      # -> visited
     assert d["scores"] == {"alex": {"light": 5.0}, "sam": {"light": 2.0}}
     # light=5/5 weighted 2.0 + auto ppm2 (cheapest of the two -> 1.0) weighted 1.0
     assert d["overall"]["alex"] == 1.0
@@ -94,7 +95,7 @@ def test_set_status_logs_an_event(api):
     r = api.patch(f"/api/houses/{a}/status", json={"status": "shortlist"})
     assert r.status_code == 200 and r.json()["status"] == "shortlist"
     hist = api.get(f"/api/houses/{a}").json()["status_history"]
-    assert [e["status"] for e in hist] == ["not_visited", "shortlist"]
+    assert [e["status"] for e in hist] == ["not_visited", "visited", "shortlist"]
 
 
 def test_set_unknown_status_is_422_and_unknown_house_is_404(api):
@@ -170,7 +171,7 @@ def test_patch_house_edits_fields_and_keeps_status_history(api):
     body = r.json()
     assert body["price_dkk"] == 4_000_000.0 and body["energy_label"] == "B"
     assert body["price_per_m2"] == 40_000.0
-    assert len(api.get(f"/api/houses/{a}").json()["status_history"]) == 1
+    assert len(api.get(f"/api/houses/{a}").json()["status_history"]) == 2   # added, scored
 
 
 def test_patch_house_can_clear_a_field_but_not_the_address(api):

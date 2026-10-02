@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
 import { useHouse } from '@/api/queries'
 import { pickInto, ScoreRow, ScoresPanel } from '@/components/house/ScoresPanel'
-import { fail, makeCriterion, makeDetail, mockApi, renderApp, signedIn } from '@/test-utils'
+import { Link, useLocation } from 'react-router'
+import { fail, LocationProbe, makeCriterion, makeDetail, mockApi, renderApp, signedIn } from '@/test-utils'
 
 const LIGHT = makeCriterion()
 const PPM2 = makeCriterion({
@@ -11,10 +12,17 @@ const PPM2 = makeCriterion({
   auto_source: 'price_per_m2', higher_is_better: false, sort: 1,
 })
 
-/** The panel reads its data from the house query, like the real page. */
+/** The panel reads its data from the house query, like the real page; a link and the
+ *  location let a test leave it. */
 function Harness() {
   const q = useHouse('lindevej-14')
-  return q.data ? <ScoresPanel detail={q.data} /> : null
+  return (
+    <>
+      <Link to="/elsewhere">Leave</Link>
+      <LocationProbe />
+      {useLocation().pathname === '/' && q.data && <ScoresPanel detail={q.data} />}
+    </>
+  )
 }
 
 function renderPanel(detail = makeDetail(), extra = {}) {
@@ -112,4 +120,32 @@ test('pickInto holds a change and drops one that matches what is saved', () => {
   expect(pickInto({ light: 2 }, { light: 4 }, 'light', 4)).toEqual({})
   expect(pickInto({}, { light: 4 }, 'light', null)).toEqual({ light: null })
   expect(pickInto({ light: 3 }, undefined, 'light', null)).toEqual({})
+})
+
+test('leaving with unsaved ratings asks first; staying keeps them', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(false)
+  renderPanel()
+  await userEvent.click(await screen.findByRole('button', { name: 'Light 4' }))
+  await userEvent.click(screen.getByRole('link', { name: 'Leave' }))
+  expect(window.confirm).toHaveBeenCalledWith('Your unsaved ratings will be lost. Leave anyway?')
+  expect(screen.getByTestId('location')).toHaveTextContent(/^\/ /)
+  expect(screen.getByRole('button', { name: 'Light 4' })).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('leaving anyway drops the unsaved ratings', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  const calls = renderPanel()
+  await userEvent.click(await screen.findByRole('button', { name: 'Light 4' }))
+  await userEvent.click(screen.getByRole('link', { name: 'Leave' }))
+  await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/elsewhere'))
+  expect(calls.some(c => c.method === 'PUT')).toBe(false)
+})
+
+test('nothing unsaved: leaving does not ask', async () => {
+  vi.spyOn(window, 'confirm')
+  renderPanel()
+  await screen.findByRole('button', { name: 'Light 4' })
+  await userEvent.click(screen.getByRole('link', { name: 'Leave' }))
+  await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/elsewhere'))
+  expect(window.confirm).not.toHaveBeenCalled()
 })

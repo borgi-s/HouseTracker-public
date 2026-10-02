@@ -14,7 +14,7 @@ test('band: the next slot, how many more, and whether to sign up', () => {
   const { container } = render(<OpenHouseBand slots={[NEXT, SUN, PAST]} now={NOW} />)
   expect(container).toHaveTextContent('Open house Sun 4 Oct 15:30 +1 more')
   expect(screen.getByText('Sign-up')).toBeInTheDocument()
-  expect(container.firstChild).toHaveClass('bg-openhouse', 'pointer-events-none')
+  expect(container.firstChild).toHaveClass('bg-black/60', 'text-white', 'pointer-events-none')
 })
 
 test('pill: the next slot only', () => {

@@ -1,6 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect } from 'react'
-import { Link } from 'react-router'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { Link, useBlocker } from 'react-router'
 import { api } from '@/api/client'
 import { keys, useCriteria, usePeople } from '@/api/queries'
 import type { Criterion, House, HouseDetail } from '@/api/types'
@@ -63,12 +63,9 @@ export function ScoresPanel({ detail }: { detail: HouseDetail }) {
   const criteria = useCriteria()
   const { me, other, slotOf } = usePeople()
   const houseId = detail.house.id
-  // Taps are held as a draft until Save. It lives in the query cache, never collected,
-  // so it survives moving around the app; a reload or closing the tab asks first.
-  const draftKey = ['scoreDraft', me?.id ?? '', houseId]
-  const draft = useQuery({ queryKey: draftKey, queryFn: () => ({}) as Draft,
-    staleTime: Infinity, gcTime: Infinity }).data ?? {}
-  const setDraft = (d: Draft) => qc.setQueryData(draftKey, d)
+  // Taps are held as a draft until Save. Leaving the page with some asks first, and
+  // leaving anyway drops them; a reload or closing the tab gets the browser's own prompt.
+  const [draft, setDraft] = useState<Draft>({})
   const saved = me ? detail.scores[me.id] : undefined
   const pending = Object.entries(draft)
   const save = useMutation({
@@ -82,6 +79,13 @@ export function ScoresPanel({ detail }: { detail: HouseDetail }) {
       qc.invalidateQueries({ queryKey: keys.houses }),
     ]),
   })
+  const blocker = useBlocker(({ currentLocation, nextLocation }) =>
+    pending.length > 0 && currentLocation.pathname !== nextLocation.pathname)
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return
+    if (window.confirm('Your unsaved ratings will be lost. Leave anyway?')) blocker.proceed()
+    else blocker.reset()
+  }, [blocker])
   useEffect(() => {
     if (!pending.length) return
     const warn = (e: BeforeUnloadEvent) => e.preventDefault()

@@ -63,3 +63,25 @@ def test_probe_listing_hands_back_the_page():
             raise OSError("down")
 
     assert probe_listing("https://x.dk/1", Boom()) == ("unknown", "https://x.dk/1", "")
+
+
+# EDC keeps a sold house's page up with an unchanged title; only the case data says so
+# (seen 2026-09-30). Trimmed from the real payload; the address is made up.
+EDC_SOLD = ('<html><head><title>Kvikvej 1, 2800 Kongens Lyngby</title></head><body>'
+            '<h1>Kvikvej 1</h1><a href="/saelg-bolig/solgte-ejendomme/">Boligindeks</a>'
+            '<script>{"isAdvertised":false,"hasNewPrice":false,"isContractSigned":true,'
+            '"isSold":true,"isRented":false}</script></body></html>')
+
+
+def test_classify_sold_from_the_listings_own_isSold_flag():
+    assert classify(200, "https://www.edc.dk/x/", EDC_SOLD) == "sold"
+
+
+def test_classify_listed_when_the_flag_is_false():
+    assert classify(200, "https://www.edc.dk/x/", EDC_SOLD.replace('"isSold":true', '"isSold":false')) == "listed"
+
+
+def test_classify_ignores_isSold_when_the_page_has_several_cases():
+    """A 'similar homes' strip could carry other cases' flags: then it is not ours."""
+    page = EDC_SOLD.replace("</script>", '[{"isSold":false},{"isSold":true}]</script>')
+    assert classify(200, "https://www.edc.dk/x/", page) == "listed"

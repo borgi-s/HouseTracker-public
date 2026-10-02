@@ -3,18 +3,19 @@ import { signupLabel, slotLabel, upcoming } from '@/lib/openhouse'
 import { cn } from '@/lib/utils'
 
 /** The next open house as a strip across the bottom of a card photo, for houses we have
- *  not visited (spec D3). Clicks fall through to the photo's link. */
+ *  not visited (spec D3). Clicks fall through to the photo's link. Translucent black, not
+ *  the amber accent: it sits on whatever the photo ends in (often a green lawn). */
 export function OpenHouseBand({ slots, now = new Date() }: { slots: OpenHouse[]; now?: Date }) {
   const next = upcoming(slots, now)
   if (!next.length) return null
   const kind = signupLabel(next[0])
   return (
-    <p className="pointer-events-none absolute inset-x-0 bottom-0 flex items-baseline justify-between gap-2 bg-openhouse px-3 py-2 text-sm text-openhouse-foreground">
+    <p className="pointer-events-none absolute inset-x-0 bottom-0 flex items-baseline justify-between gap-2 bg-black/60 px-4 py-4 text-base text-white backdrop-blur-sm">
       <span>
         <b className="font-bold tracking-wide uppercase">Open house</b> {slotLabel(next[0], now)}
         {next.length > 1 && ` +${next.length - 1} more`}
       </span>
-      {kind && <span className="text-xs font-semibold">{kind}</span>}
+      {kind && <span className="text-sm font-semibold">{kind}</span>}
     </p>
   )
 }

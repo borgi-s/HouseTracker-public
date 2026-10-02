@@ -31,3 +31,20 @@ def test_delete_score_removes_one_persons_value(tmp_path):
     assert s.delete_score("h1", "alex", "light") is True
     assert s.get_scores("h1") == {("sam", "light"): 2.0}
     assert s.delete_score("h1", "alex", "light") is False
+
+
+def test_a_saved_score_moves_a_not_visited_house_to_visited(tmp_path):
+    s = _store(tmp_path)
+    assert s.get_house("a").status == "not_visited"
+    s.upsert_score("a", "alex", "daylight", 4.0, now="2026-10-02")
+    assert s.get_house("a").status == "visited"
+    s.set_status("a", "not_visited", now="2026-10-02")      # put back by hand...
+    s.upsert_score("a", "alex", "daylight", 3.0, now="2026-10-03")
+    assert s.get_house("a").status == "visited"              # ...rated again: visited again
+
+
+def test_a_score_leaves_any_later_status_alone(tmp_path):
+    s = _store(tmp_path)
+    s.set_status("a", "shortlist", now="2026-10-02")
+    s.upsert_score("a", "alex", "daylight", 4.0, now="2026-10-02")
+    assert s.get_house("a").status == "shortlist"

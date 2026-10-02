@@ -1,7 +1,7 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import { render } from '@testing-library/react'
 import type { ReactElement } from 'react'
-import { MemoryRouter, useLocation } from 'react-router'
+import { createMemoryRouter, RouterProvider, useLocation } from 'react-router'
 import { vi } from 'vitest'
 import type {
   Anchor, Criterion, House, HouseDetail, HouseListItem, Media, Person, School, SchoolDistrict,
@@ -41,11 +41,12 @@ export function mockApi(handlers: Record<string, Handler>): Call[] {
 export function renderApp(ui: ReactElement, { route = '/', state }: { route?: string; state?: unknown } = {}) {
   const [pathname, query] = route.split('?')
   const client = makeQueryClient()
+  // A data router, like the app's, so useBlocker works.
+  const router = createMemoryRouter([{ path: '*', element: ui }],
+    { initialEntries: [{ pathname, search: query ? `?${query}` : '', state }] })
   const result = render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[{ pathname, search: query ? `?${query}` : '', state }]}>
-        {ui}
-      </MemoryRouter>
+      <RouterProvider router={router} />
     </QueryClientProvider>,
   )
   return { client, ...result }

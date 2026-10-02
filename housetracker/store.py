@@ -538,6 +538,9 @@ class HouseStore:
             "DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
             (house_id, person_id, criterion_id, float(value), now, now))
         self.conn.commit()
+        house = self.get_house(house_id)
+        if house and house.status == "not_visited":      # rating it means we have seen it
+            self.set_status(house_id, "visited", now)
 
     def get_scores(self, house_id: str) -> dict[tuple[str, str], float]:
         rows = self.conn.execute(

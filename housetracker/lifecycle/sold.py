@@ -27,6 +27,18 @@ def _sold_haystack(final_url: str, html: str) -> str:
     so a nav 'Solgte boliger' link on an active listing can't trigger a false 'sold'."""
     parts = [final_url, *_TITLE_RE.findall(html), *_H1_RE.findall(html)]
     return " ".join(parts).lower()
+
+# EDC leaves a sold house's page up with the same title; its case data says "isSold":true
+# (seen 2026-09-30). Trusted only when the page holds exactly one such flag, i.e. it is the
+# listing's own and not a "similar homes" strip's.
+_SOLD_FLAG_RE = re.compile(r'"isSold"\s*:\s*(true|false)')
+
+
+def _flagged_sold(html: str) -> bool:
+    flags = _SOLD_FLAG_RE.findall(html)
+    return flags == ["true"]
+
+
 GONE_CODES = (404, 410, 451)
 
 
@@ -60,7 +72,7 @@ def classify(status: int | None, final_url: str, html: str) -> str:
         return "unknown"
     if status == 200:
         hay = _sold_haystack(final_url, html)
-        if any(m in hay for m in SOLD_MARKERS):
+        if any(m in hay for m in SOLD_MARKERS) or _flagged_sold(html):
             return "sold"
         return "listed"
     return "unknown"          # 403 bot-wall, 5xx, redirects to non-sold — inconclusive
