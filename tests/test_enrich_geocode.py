@@ -51,3 +51,27 @@ def test_geocode_swallows_network_errors():
     def boom(url):
         raise OSError("no network")
     assert AddressGeocoder(opener=boom).geocode("x, 2800") is None
+
+
+def test_a_house_registered_as_floor_units_is_washed_via_its_ground_floor():
+    """Adressevask answers -600 for a house number that only exists as unit addresses
+    (Vinkelhøj 6, 8260 Viby J: '6, st.', '6, 1.'); the ground floor's coordinates and BBR
+    are the house's."""
+    import urllib.parse
+    UNITS = {"vaskestatus": {"kode": -600, "tekst": "Etage findes ikke på adresse på husnummer"},
+             "vaskeresultat": {"adresse_id_lokalid": None}}
+    asked = []
+    def units(url):
+        if "adressevaelger.dk/vask/" in url:
+            text = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)["adresse"][0]
+            asked.append(text)
+            return json.dumps(VASK if text == "Møllehaven 17 st., 2800 Kongens Lyngby" else UNITS).encode()
+        return json.dumps(BOLIGSIDEN).encode()
+    loc = AddressGeocoder(opener=units).geocode("Møllehaven 17, 2800 Kongens Lyngby")
+    assert loc is not None and loc["address_id"] == AID
+    assert asked == ["Møllehaven 17, 2800 Kongens Lyngby", "Møllehaven 17 st., 2800 Kongens Lyngby"]
+
+
+def test_a_single_house_that_rejects_every_floor_is_still_none():
+    UNITS = {"vaskestatus": {"kode": -600, "tekst": "x"}, "vaskeresultat": {"adresse_id_lokalid": None}}
+    assert AddressGeocoder(opener=opener(vask=UNITS)).geocode("Møllehaven 17, 2800") is None

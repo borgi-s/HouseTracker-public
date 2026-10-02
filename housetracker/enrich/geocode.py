@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.parse
 from typing import Protocol
 
@@ -44,13 +45,24 @@ class AddressGeocoder:
     def geocode(self, address: str) -> dict | None:
         """None when the address can't be washed to one official address (Adressevask
         refuses text without a postcode rather than guess a town) or on any failure."""
-        query = urllib.parse.urlencode({"adresse": address, "token": _TOKEN})
         try:
-            washed = json.loads(self.opener(f"{_VASK}?{query}"))
-            address_id = (washed.get("vaskeresultat") or {}).get("adresse_id_lokalid")
+            address_id = self._wash(address)
         except Exception:
             return None
         if not address_id:
             return None
         data = BoligsidenClient(self.opener).address(address_id)
         return _location(address_id, data) if data else None
+
+    def _wash(self, address: str) -> str | None:
+        """The official address id. A house number registered only as floor units
+        (Vinkelhøj 6, 8260: '6, st.', '6, 1.') is refused with -600 rather than guessed;
+        then a unit stands in for the house: same coordinates, same building's BBR."""
+        for floor in ("", " st.", " 1.", " kl."):
+            text = re.sub(r"(\d+[A-Za-z]?)", rf"\1{floor}", address, count=1)
+            query = urllib.parse.urlencode({"adresse": text, "token": _TOKEN})
+            washed = json.loads(self.opener(f"{_VASK}?{query}"))
+            address_id = (washed.get("vaskeresultat") or {}).get("adresse_id_lokalid")
+            if address_id or (washed.get("vaskestatus") or {}).get("kode") != -600:
+                return address_id
+        return None
