@@ -212,3 +212,73 @@ def test_scrape_and_rescrape_record_the_pages_open_houses(api, monkeypatch):
     assert api.post(f"/api/houses/{hid}/rescrape").status_code == 200
     assert [(r["starts_at"], r["cancelled"]) for r in store.list_open_houses(hid)] == [
         ("2099-10-04T13:30:00Z", True), ("2099-10-11T13:30:00Z", False)]
+
+
+def test_anchor_with_only_an_address_is_geocoded(api, monkeypatch):
+    monkeypatch.setattr("housetracker.api.admin.AddressGeocoder", FakeGeocoder)
+    r = api.post("/api/anchors", json={"label": "Work", "address": "Arbejdsvej 1, 2800"})
+    assert r.status_code == 201
+    assert (r.json()["lat"], r.json()["lon"]) == (55.78, 12.52)
+
+
+def test_anchor_whose_address_is_not_found_is_422(api, monkeypatch):
+    class Nowhere(FakeGeocoder):
+        def geocode(self, address):
+            return None
+    monkeypatch.setattr("housetracker.api.admin.AddressGeocoder", Nowhere)
+    r = api.post("/api/anchors", json={"label": "Work", "address": "Nowhere 1"})
+    assert r.status_code == 422 and api.get("/api/anchors").json() == []
+
+
+def test_new_anchor_is_routed_to_every_located_house(api, monkeypatch):
+    monkeypatch.setattr("housetracker.api.admin.ORSRouter", FakeRouter)
+    monkeypatch.setenv("HT_ORS_KEY", "test-key")
+    located = _house(api)
+    HouseStore(api.app.state.db_path).update_house_location(located, 55.7, 12.5, now="x")
+    unlocated = _house(api, address="Gammelvej 9, 2800")
+    api.post("/api/anchors", json={"label": "Work", "lat": 55.8, "lon": 12.6})
+    assert len(api.get(f"/api/houses/{located}").json()["commutes"]) == 3
+    assert api.get(f"/api/houses/{unlocated}").json()["commutes"] == []
+
+
+def test_delete_anchor(api):
+    api.post("/api/anchors", json={"label": "Work", "lat": 55.8, "lon": 12.6})
+    assert api.delete("/api/anchors/work").status_code == 200
+    assert api.get("/api/anchors").json() == []
+    assert api.delete("/api/anchors/work").status_code == 404
+
+
+def test_settings_read_and_write(api, monkeypatch):
+    monkeypatch.delenv("HT_DISCORD_WEBHOOK", raising=False)
+    assert api.get("/api/settings").json() == {
+        "notify_price_drops": True, "notify_open_houses": True, "discord_configured": False}
+    r = api.patch("/api/settings", json={"notify_open_houses": False})
+    assert r.json()["notify_open_houses"] is False and r.json()["notify_price_drops"] is True
+    monkeypatch.setenv("HT_DISCORD_WEBHOOK", "https://discord.test/hook")
+    assert api.get("/api/settings").json()["discord_configured"] is True
+
+
+def test_edit_anchor_label_and_address(api, monkeypatch):
+    monkeypatch.setattr("housetracker.api.admin.AddressGeocoder", FakeGeocoder)
+    monkeypatch.setattr("housetracker.api.admin.ORSRouter", FakeRouter)
+    monkeypatch.setenv("HT_ORS_KEY", "test-key")
+    api.post("/api/anchors", json={"label": "Work", "lat": 55.8, "lon": 12.6})
+    hid = _house(api)
+    HouseStore(api.app.state.db_path).update_house_location(hid, 55.7, 12.5, now="x")
+    r = api.patch("/api/anchors/work", json={"label": "Office"})
+    assert r.status_code == 200 and r.json()["label"] == "Office" and r.json()["lat"] == 55.8
+    r = api.patch("/api/anchors/work", json={"address": "Arbejdsvej 1, 2800"})
+    assert (r.json()["lat"], r.json()["address"]) == (55.78, "Arbejdsvej 1, 2800")
+    assert len(api.get(f"/api/houses/{hid}").json()["commutes"]) == 3   # re-routed
+
+
+def test_edit_anchor_errors(api, monkeypatch):
+    class Nowhere(FakeGeocoder):
+        def geocode(self, address):
+            return None
+    monkeypatch.setattr("housetracker.api.admin.AddressGeocoder", Nowhere)
+    api.post("/api/anchors", json={"label": "Work", "lat": 55.8, "lon": 12.6})
+    assert api.patch("/api/anchors/nope", json={"label": "X"}).status_code == 404
+    assert api.patch("/api/anchors/work", json={"address": "Nowhere 1"}).status_code == 422
+    assert api.patch("/api/anchors/work", json={"label": ""}).status_code == 422
+    assert api.get("/api/anchors").json()[0]["lat"] == 55.8

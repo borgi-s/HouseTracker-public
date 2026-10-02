@@ -23,7 +23,7 @@ from housetracker.scrape.openhouse import record_page
 from housetracker.scrape.synth import InboxSynthesizer, tmux_poke
 from housetracker.lifecycle.boligsiden import BoligsidenClient
 from housetracker.lifecycle.lifecycle import run_lifecycle
-from housetracker.lifecycle.notify import from_env
+from housetracker.lifecycle.notify import hooks
 from housetracker.lifecycle.sold import HttpProber
 
 
@@ -193,11 +193,11 @@ def main(argv: list[str], out) -> int:
         print(f"{args.house}\tsold={args.price:.0f} date={args.date}", file=out)
     elif args.cmd == "lifecycle":
         online = not args.no_boligsiden
-        hook = from_env()
+        notify, notify_open = hooks(store)
         summary = run_lifecycle(store, HttpProber(),
                                 BoligsidenClient() if online else None, now=_today(),
                                 geocoder=AddressGeocoder() if online else None,
-                                notify=hook, notify_open=hook and hook.open_houses)
+                                notify=notify, notify_open=notify_open)
         print(" ".join(f"{k}={v}" for k, v in summary.items()), file=out)
     elif args.cmd == "scrape":
         lane_b = None if args.no_browser else PatchrightFetcher()

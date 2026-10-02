@@ -47,6 +47,23 @@ def create_app(db_path, data_dir=None, web_dir=None) -> FastAPI:
             raise HTTPException(status_code=409,
                                 detail=f"person {body.name!r} already exists") from e
 
+    @app.patch("/api/persons/{person_id}")
+    def rename_person(person_id: str, body: PersonIn,
+                      store: HouseStore = Depends(get_store)) -> dict:
+        if not any(p.id == person_id for p in store.list_persons()):
+            raise HTTPException(status_code=404, detail=f"no person {person_id!r}")
+        try:
+            return store.rename_person(person_id, body.name).to_dict()
+        except sqlite3.IntegrityError as e:
+            raise HTTPException(status_code=409,
+                                detail=f"person {body.name!r} already exists") from e
+
+    @app.delete("/api/persons/{person_id}")
+    def delete_person(person_id: str, store: HouseStore = Depends(get_store)) -> dict:
+        if not store.delete_person(person_id):
+            raise HTTPException(status_code=404, detail=f"no person {person_id!r}")
+        return {"deleted": person_id}
+
     @app.get("/api/session")
     def read_session(request: Request,
                      store: HouseStore = Depends(get_store)) -> dict:

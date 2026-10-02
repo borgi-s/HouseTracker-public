@@ -78,7 +78,7 @@ export function HousePage() {
   const downloading = shouldPoll(scrapedCount(d.media), wait.pending, wait.startedAt, q.dataUpdatedAt)
 
   return (
-    <article className="space-y-10 pb-40 lg:pb-12">
+    <article className="space-y-10 pb-56 lg:pb-24">
       <HouseHero photos={photos} plans={plans} location={where} desktop={desktop}
         onOpen={(tab, index) => setViewer({ tab, index })} />
       {downloading && <p className="text-sm text-muted-foreground">Downloading photos and documents…</p>}

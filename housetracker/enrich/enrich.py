@@ -39,6 +39,25 @@ def _place(house) -> str:
     return f"{house.address}, {town}" if town else house.address
 
 
+def route_to_anchors(house, store, router, anchors, now: str) -> int:
+    """Every ROUTE_MODES commute from a located house to each located anchor; a failed
+    route is skipped. Returns how many were stored."""
+    n = 0
+    for a in anchors:
+        if a.lat is None or a.lon is None:
+            continue
+        for mode in ROUTE_MODES:
+            try:
+                result = router.route((house.lon, house.lat), (a.lon, a.lat), mode)
+            except Exception:
+                result = None
+            if result is not None:
+                minutes, distance_m = result
+                store.upsert_commute(house.id, a.id, mode, minutes, distance_m, now)
+                n += 1
+    return n
+
+
 def enrich_house(house, store, geocoder, router, now: str, anchors=None) -> dict:
     summary = {"geocoded": False, "commutes": 0, "school_map_url": None, "schools": 0}
 
@@ -73,18 +92,7 @@ def enrich_house(house, store, geocoder, router, now: str, anchors=None) -> dict
     if router is not None:
         if anchors is None:
             anchors = store.list_anchors(kind="fixed")
-        for a in anchors:
-            if a.lat is None or a.lon is None:
-                continue
-            for mode in ROUTE_MODES:
-                try:
-                    result = router.route((house.lon, house.lat), (a.lon, a.lat), mode)
-                except Exception:
-                    result = None
-                if result is not None:
-                    minutes, distance_m = result
-                    store.upsert_commute(house.id, a.id, mode, minutes, distance_m, now)
-                    summary["commutes"] += 1
+        summary["commutes"] = route_to_anchors(house, store, router, anchors, now)
 
     try:
         summary["schools"] = resolve_schools(house, store, router, geocoder, now)

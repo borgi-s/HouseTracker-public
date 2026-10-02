@@ -2,8 +2,8 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
 import { useHouse } from '@/api/queries'
-import { ScoreRow, ScoresPanel, withScore } from '@/components/house/ScoresPanel'
-import { fail, makeCriterion, makeDetail, mockApi, never, renderApp, signedIn } from '@/test-utils'
+import { pickInto, ScoreRow, ScoresPanel } from '@/components/house/ScoresPanel'
+import { fail, makeCriterion, makeDetail, mockApi, renderApp, signedIn } from '@/test-utils'
 
 const LIGHT = makeCriterion()
 const PPM2 = makeCriterion({
@@ -50,39 +50,52 @@ test('ScoreRow: tapping my value clears it, tapping another sets it', async () =
   expect(onPick.mock.calls).toEqual([[null], [2]])
 })
 
-test('withScore sets and clears one value without touching the rest', () => {
-  const d = makeDetail({ scores: { alex: { light: 2 }, sam: { light: 5 } } })
-  expect(withScore(d, 'alex', 'light', 4).scores).toEqual({ alex: { light: 4 }, sam: { light: 5 } })
-  expect(withScore(d, 'alex', 'light', null).scores).toEqual({ alex: {}, sam: { light: 5 } })
-})
-
-test('a tap shows at once, before the server answers', async () => {
-  const calls = renderPanel(makeDetail(), { 'PUT /api/houses/lindevej-14/scores/light': never })
+test('a tap is held until Save, then sent; nothing goes out before', async () => {
+  const calls = renderPanel(makeDetail(), { 'PUT /api/houses/lindevej-14/scores/light': () => ({}) })
   await userEvent.click(await screen.findByRole('button', { name: 'Light 4' }))
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Light 4' })).toHaveAttribute('aria-pressed', 'true'))
+  expect(screen.getByRole('button', { name: 'Light 4' })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByText('1 unsaved rating')).toBeInTheDocument()
+  expect(calls.some(c => c.method === 'PUT')).toBe(false)
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }))
   await waitFor(() => expect(calls).toContainEqual(
     { method: 'PUT', path: '/api/houses/lindevej-14/scores/light', body: { value: 4 } }))
 })
 
-test('tapping my current value clears it on the server', async () => {
+test('tapping my saved value clears it on Save', async () => {
   const calls = renderPanel(makeDetail({ scores: { alex: { light: 4 } } }),
     { 'DELETE /api/houses/lindevej-14/scores/light': () => ({ deleted: true }) })
   await userEvent.click(await screen.findByRole('button', { name: 'Light 4' }))
+  expect(screen.getByRole('button', { name: 'Light 4' })).toHaveAttribute('aria-pressed', 'false')
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }))
   await waitFor(() => expect(calls).toContainEqual(
     { method: 'DELETE', path: '/api/houses/lindevej-14/scores/light', body: undefined }))
 })
 
-test('a failed save puts the old value back', async () => {
-  let failNow = () => {}
+test('going back to the saved value leaves nothing to save', async () => {
+  renderPanel(makeDetail({ scores: { alex: { light: 4 } } }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Light 2' }))
+  expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Light 4' }))
+  expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
+})
+
+test('Discard puts the saved values back', async () => {
+  renderPanel(makeDetail({ scores: { alex: { light: 4 } } }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Light 2' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Discard' }))
+  expect(screen.getByRole('button', { name: 'Light 4' })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
+})
+
+test('a failed save keeps the ratings and says why', async () => {
   renderPanel(makeDetail(), {
-    'PUT /api/houses/lindevej-14/scores/light': () =>
-      new Promise<Response>(resolve => { failNow = () => resolve(fail(500, 'database is locked')) }),
+    'PUT /api/houses/lindevej-14/scores/light': () => fail(500, 'database is locked'),
   })
   await userEvent.click(await screen.findByRole('button', { name: 'Light 4' }))
-  const four = () => screen.getByRole('button', { name: 'Light 4' })
-  await waitFor(() => expect(four()).toHaveAttribute('aria-pressed', 'true'))
-  failNow()
-  await waitFor(() => expect(four()).toHaveAttribute('aria-pressed', 'false'))
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+  expect(await screen.findByText(/database is locked/)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Light 4' })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
 })
 
 test('automatic criteria show their value with its unit, read-only', async () => {
@@ -92,4 +105,11 @@ test('automatic criteria show their value with its unit, read-only', async () =>
   expect(screen.getByText('142 m²')).toBeInTheDocument()
   expect(screen.queryByText(/is better/)).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /Price per m²/ })).not.toBeInTheDocument()
+})
+
+test('pickInto holds a change and drops one that matches what is saved', () => {
+  expect(pickInto({}, { light: 4 }, 'light', 2)).toEqual({ light: 2 })
+  expect(pickInto({ light: 2 }, { light: 4 }, 'light', 4)).toEqual({})
+  expect(pickInto({}, { light: 4 }, 'light', null)).toEqual({ light: null })
+  expect(pickInto({ light: 3 }, undefined, 'light', null)).toEqual({})
 })

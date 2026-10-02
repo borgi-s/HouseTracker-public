@@ -212,3 +212,16 @@ export type EditableField = (typeof EDITABLE_FIELDS)[number]
 export type HouseFields = Partial<Pick<House, EditableField>>
 
 export interface ScrapeResult extends House { media_pending: number }
+
+/** GET /api/settings. discord_configured: HT_DISCORD_WEBHOOK is set (the URL stays server-side). */
+export interface AppSettings {
+  notify_price_drops: boolean
+  notify_open_houses: boolean
+  discord_configured: boolean
+}
+export type SettingsPatch = Partial<Pick<AppSettings, 'notify_price_drops' | 'notify_open_houses'>>
+
+/** POST /api/admin/lifecycle: counts from one sweep. */
+export interface LifecycleSummary {
+  checked: number; marked_sold: number; priced: number; repriced: number; skipped: number; open_new: number
+}

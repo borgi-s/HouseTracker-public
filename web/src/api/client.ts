@@ -1,6 +1,6 @@
 import type {
-  Anchor, Criterion, CriterionIn, CriterionPatch, House, HouseDetail, HouseFields,
-  HouseListItem, Media, Note, Person, ScrapeResult, Status, Tag,
+  Anchor, AppSettings, Criterion, CriterionIn, CriterionPatch, House, HouseDetail, HouseFields,
+  HouseListItem, LifecycleSummary, Media, Note, Person, ScrapeResult, SettingsPatch, Status, Tag,
 } from './types'
 
 /** Any non-2xx response. `message` is FastAPI's `detail` made readable; `detail` is the
@@ -43,6 +43,8 @@ const enc = encodeURIComponent
 export const api = {
   persons: () => request<Person[]>('GET', '/api/persons'),
   addPerson: (name: string) => request<Person>('POST', '/api/persons', { name }),
+  renamePerson: (id: string, name: string) => request<Person>('PATCH', `/api/persons/${enc(id)}`, { name }),
+  deletePerson: (id: string) => request<{ deleted: string }>('DELETE', `/api/persons/${enc(id)}`),
   session: () => request<{ person: Person | null }>('GET', '/api/session'),
   pickPerson: (personId: string) =>
     request<{ person: Person }>('POST', '/api/session', { person_id: personId }),
@@ -73,6 +75,7 @@ export const api = {
   addCriterion: (c: CriterionIn) => request<Criterion>('POST', '/api/criteria', c),
   updateCriterion: (id: string, patch: CriterionPatch) =>
     request<Criterion>('PATCH', `/api/criteria/${enc(id)}`, patch),
+  deleteCriterion: (id: string) => request<{ deleted: string }>('DELETE', `/api/criteria/${enc(id)}`),
   setScore: (houseId: string, criterionId: string, value: number) =>
     request<unknown>('PUT', `/api/houses/${enc(houseId)}/scores/${enc(criterionId)}`, { value }),
   clearScore: (houseId: string, criterionId: string) =>
@@ -86,4 +89,11 @@ export const api = {
   deleteMedia: (mediaId: string) =>
     request<{ deleted: string }>('DELETE', `/api/media/${enc(mediaId)}`),
   anchors: () => request<Anchor[]>('GET', '/api/anchors'),
+  addAnchor: (label: string, address: string) => request<Anchor>('POST', '/api/anchors', { label, address }),
+  updateAnchor: (id: string, patch: { label?: string; address?: string }) =>
+    request<Anchor>('PATCH', `/api/anchors/${enc(id)}`, patch),
+  deleteAnchor: (id: string) => request<{ deleted: string }>('DELETE', `/api/anchors/${enc(id)}`),
+  settings: () => request<AppSettings>('GET', '/api/settings'),
+  updateSettings: (patch: SettingsPatch) => request<AppSettings>('PATCH', '/api/settings', patch),
+  lifecycle: () => request<LifecycleSummary>('POST', '/api/admin/lifecycle'),
 }

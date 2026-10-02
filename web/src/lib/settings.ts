@@ -1,4 +1,4 @@
-import type { Criterion, CriterionIn } from '@/api/types'
+import type { Criterion, CriterionIn, LifecycleSummary } from '@/api/types'
 
 /** Spec §4.7 "Start with defaults": a starting point, edited in Settings from then on. */
 export const DEFAULT_CRITERIA: CriterionIn[] = [
@@ -33,3 +33,20 @@ export const keyFrom = (label: string) =>
   label.trim().toLowerCase()
     .replace(/æ/g, 'ae').replace(/ø/g, 'oe').replace(/å/g, 'aa')
     .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+
+/** Each active criterion's weight as a whole percent of the active total — what the
+ *  number in the weight field actually means for the overall score. */
+export function weightShares(list: Criterion[]): Record<string, number> {
+  const active = list.filter(c => c.active)
+  const total = active.reduce((n, c) => n + c.weight, 0)
+  return Object.fromEntries(active.map(c => [c.id, total ? Math.round((c.weight / total) * 100) : 0]))
+}
+
+/** One line for what a lifecycle sweep did; zero counts are left out. */
+export function sweepSummary(s: LifecycleSummary): string {
+  const parts = [
+    [s.marked_sold, 'sold'], [s.priced, 'sale prices found'],
+    [s.repriced, 'price changes'], [s.open_new, 'new open houses'],
+  ].filter(([n]) => n).map(([n, what]) => `${n} ${what}`)
+  return [`Checked ${s.checked}`, ...(parts.length ? parts : ['nothing new'])].join(' · ')
+}

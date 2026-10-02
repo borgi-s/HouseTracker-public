@@ -98,6 +98,9 @@ CREATE TABLE IF NOT EXISTS open_house (
     first_seen TEXT NOT NULL, gone_at TEXT,
     PRIMARY KEY (house_id, starts_at)
 );
+CREATE TABLE IF NOT EXISTS setting (
+    key TEXT PRIMARY KEY, value TEXT NOT NULL
+);
 """
 
 
@@ -453,6 +456,21 @@ class HouseStore:
         self.conn.commit()
         return Person(id=pid, name=name)
 
+    def rename_person(self, person_id: str, name: str) -> Person:
+        """The id stays, so a session cookie keeps naming the same person."""
+        self.conn.execute("UPDATE person SET name = ? WHERE id = ?", (name, person_id))
+        self.conn.commit()
+        return Person(id=person_id, name=name)
+
+    def delete_person(self, person_id: str) -> bool:
+        """The person, their scores and their private notes and tags. Shared ones
+        (person_id NULL) are everyone's and stay."""
+        for t in ("score", "note", "tag"):
+            self.conn.execute(f"DELETE FROM {t} WHERE person_id = ?", (person_id,))
+        cur = self.conn.execute("DELETE FROM person WHERE id = ?", (person_id,))
+        self.conn.commit()
+        return cur.rowcount > 0
+
     def list_persons(self) -> list[Person]:
         rows = self.conn.execute("SELECT * FROM person ORDER BY name").fetchall()
         return [Person.from_dict(dict(r)) for r in rows]
@@ -494,6 +512,12 @@ class HouseStore:
             "WHERE id = ?", (c.label, c.weight, c.sort, int(c.active), criterion_id))
         self.conn.commit()
         return c
+
+    def delete_criterion(self, criterion_id: str) -> bool:
+        self.conn.execute("DELETE FROM score WHERE criterion_id = ?", (criterion_id,))
+        cur = self.conn.execute("DELETE FROM criterion WHERE id = ?", (criterion_id,))
+        self.conn.commit()
+        return cur.rowcount > 0
 
     def _unique_key(self, table: str, base: str) -> str:
         taken = {r["id"] for r in
@@ -648,6 +672,38 @@ class HouseStore:
             rows = self.conn.execute(
                 "SELECT * FROM anchor WHERE kind = ? ORDER BY id", (kind,)).fetchall()
         return [Anchor.from_dict(dict(r)) for r in rows]
+
+    def update_anchor(self, anchor_id: str, fields: dict) -> Anchor:
+        """label/address/lat/lon. Moving the anchor drops its travel times; they no
+        longer measure to it."""
+        current = self.get_anchor(anchor_id)
+        if current is None:
+            raise ValidationError(f"no anchor with id {anchor_id!r}")
+        a = Anchor.from_dict({**current.to_dict(), **fields})   # validates
+        if (a.lat, a.lon) != (current.lat, current.lon):
+            self.conn.execute("DELETE FROM commute WHERE anchor_ref = ?", (anchor_id,))
+        self.conn.execute(
+            "UPDATE anchor SET label = ?, address = ?, lat = ?, lon = ? WHERE id = ?",
+            (a.label, a.address, a.lat, a.lon, anchor_id))
+        self.conn.commit()
+        return a
+
+    def delete_anchor(self, anchor_id: str) -> bool:
+        self.conn.execute("DELETE FROM commute WHERE anchor_ref = ?", (anchor_id,))
+        cur = self.conn.execute("DELETE FROM anchor WHERE id = ?", (anchor_id,))
+        self.conn.commit()
+        return cur.rowcount > 0
+
+    def get_setting(self, key: str, default: str) -> str:
+        row = self.conn.execute(
+            "SELECT value FROM setting WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else default
+
+    def set_setting(self, key: str, value: str) -> None:
+        self.conn.execute(
+            "INSERT INTO setting (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
+        self.conn.commit()
 
     def upsert_commute(self, house_id: str, anchor_ref: str, mode: str,
                        minutes: float | None, distance_m: float | None,

@@ -68,6 +68,14 @@ def update_criterion(criterion_id: str, body: CriterionPatch,
         raise HTTPException(status_code=422, detail=str(e)) from e
 
 
+@router.delete("/criteria/{criterion_id}")
+def delete_criterion(criterion_id: str, store: HouseStore = Depends(get_store)) -> dict:
+    """Gone with every score given on it; deactivating keeps them."""
+    if not store.delete_criterion(criterion_id):
+        raise HTTPException(status_code=404, detail=f"no criterion {criterion_id!r}")
+    return {"deleted": criterion_id}
+
+
 @router.put("/houses/{house_id}/scores/{criterion_id}")
 def set_score(house_id: str, criterion_id: str, body: ScoreIn,
               store: HouseStore = Depends(get_store),

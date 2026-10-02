@@ -1,5 +1,5 @@
 """One end-to-end smoke through the built frontend (M7 spec §8): pick a person, add a
-house by hand, tap a score, see the overall move. Skips unless web/dist is built
+house by hand, tap a score and save it, see the overall move. Skips unless web/dist is built
 (`cd web && npm run build`) and a patchright browser can launch."""
 import importlib.util
 import socket
@@ -79,5 +79,6 @@ def test_pick_person_add_house_and_score(server):
 
         page.get_by_role("heading", name="Kvikvej 1, 2800").wait_for()
         page.get_by_role("button", name="Light 4").click()
+        page.get_by_role("region", name="Unsaved ratings").get_by_role("button", name="Save").click()
         page.get_by_role("img", name="Alex 4.0").wait_for()   # 4 of 5 -> 0.8 -> shown x5
         browser.close()

@@ -85,3 +85,19 @@ def test_webhook_posts_open_houses_and_mentions_nobody():
 def test_the_link_defaults_to_localhost(monkeypatch):
     monkeypatch.delenv("HT_APP_URL")
     assert drop_message(H, 2, 1, None).endswith("http://localhost:8765/house/gr-ndalvej-133a")
+
+
+def test_hooks_honour_the_settings_switches(tmp_path, monkeypatch):
+    from housetracker.lifecycle.notify import hooks
+    from housetracker.store import HouseStore
+    s = HouseStore(tmp_path / "ht.db")
+    monkeypatch.delenv("HT_DISCORD_WEBHOOK", raising=False)
+    assert hooks(s) == (None, None)
+    monkeypatch.setenv("HT_DISCORD_WEBHOOK", "https://discord.test/hook")
+    drop, open_ = hooks(s)                         # both on by default
+    assert drop.url == "https://discord.test/hook" and open_ == drop.open_houses
+    s.set_setting("notify_open_houses", "0")
+    drop, open_ = hooks(s)
+    assert drop is not None and open_ is None
+    s.set_setting("notify_price_drops", "0")
+    assert hooks(s)[0] is None

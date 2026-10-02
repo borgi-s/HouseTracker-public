@@ -144,6 +144,7 @@ export function signedIn(extra: Record<string, Handler> = {}): Record<string, Ha
     'GET /api/persons': () => [ALEX, SAM],
     'GET /api/criteria?active_only=true': () => [],
     'GET /api/anchors': () => [WORK],
+    'GET /api/settings': () => ({ notify_price_drops: true, notify_open_houses: true, discord_configured: true }),
     ...extra,
   }
 }

@@ -1,19 +1,24 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect } from 'react'
 import { Link } from 'react-router'
 import { api } from '@/api/client'
 import { keys, useCriteria, usePeople } from '@/api/queries'
 import type { Criterion, House, HouseDetail } from '@/api/types'
+import { Button } from '@/components/ui/button'
 import { DASH, money, num } from '@/lib/format'
 import { disagrees, PERSON, type Slot } from '@/lib/person'
 import { cn } from '@/lib/utils'
 
-/** The detail with one person's score for one criterion set (or cleared). */
-export function withScore(d: HouseDetail, personId: string, criterionId: string,
-                          value: number | null): HouseDetail {
-  const mine = { ...(d.scores[personId] ?? {}) }
-  if (value == null) delete mine[criterionId]
-  else mine[criterionId] = value
-  return { ...d, scores: { ...d.scores, [personId]: mine } }
+/** My taps not yet saved: criterion id -> value (null = clear). */
+export type Draft = Record<string, number | null>
+
+/** The draft after picking `value`; picking what is already saved drops the entry. */
+export function pickInto(draft: Draft, saved: Record<string, number> | undefined,
+                         cid: string, value: number | null): Draft {
+  const next = { ...draft }
+  if (value === (saved?.[cid] ?? null)) delete next[cid]
+  else next[cid] = value
+  return next
 }
 
 function autoValue(house: House, c: Criterion): string {
@@ -58,23 +63,32 @@ export function ScoresPanel({ detail }: { detail: HouseDetail }) {
   const criteria = useCriteria()
   const { me, other, slotOf } = usePeople()
   const houseId = detail.house.id
-  const key = keys.house(houseId)
-  const score = useMutation({
-    mutationFn: ({ cid, value }: { cid: string; value: number | null }) =>
-      value == null ? api.clearScore(houseId, cid) : api.setScore(houseId, cid, value),
-    // Optimistic: the tap shows at once; a failure puts the old value back (spec §7).
-    onMutate: async ({ cid, value }) => {
-      await qc.cancelQueries({ queryKey: key })
-      const before = qc.getQueryData<HouseDetail>(key)
-      if (before && me) qc.setQueryData(key, withScore(before, me.id, cid, value))
-      return { before }
+  // Taps are held as a draft until Save. It lives in the query cache, never collected,
+  // so it survives moving around the app; a reload or closing the tab asks first.
+  const draftKey = ['scoreDraft', me?.id ?? '', houseId]
+  const draft = useQuery({ queryKey: draftKey, queryFn: () => ({}) as Draft,
+    staleTime: Infinity, gcTime: Infinity }).data ?? {}
+  const setDraft = (d: Draft) => qc.setQueryData(draftKey, d)
+  const saved = me ? detail.scores[me.id] : undefined
+  const pending = Object.entries(draft)
+  const save = useMutation({
+    mutationFn: async () => {
+      for (const [cid, value] of pending)
+        await (value == null ? api.clearScore(houseId, cid) : api.setScore(houseId, cid, value))
     },
-    onError: (_error, _vars, ctx) => { if (ctx?.before) qc.setQueryData(key, ctx.before) },
+    onSuccess: () => setDraft({}),
     onSettled: () => Promise.all([
-      qc.invalidateQueries({ queryKey: key }),
+      qc.invalidateQueries({ queryKey: keys.house(houseId) }),
       qc.invalidateQueries({ queryKey: keys.houses }),
     ]),
   })
+  useEffect(() => {
+    if (!pending.length) return
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [pending.length])
+  const mineOf = (cid: string) => (cid in draft ? draft[cid] ?? undefined : saved?.[cid])
   const list = criteria.data ?? []
   const subjective = list.filter(c => c.kind === 'subjective')
   const auto = list.filter(c => c.kind === 'auto')
@@ -88,19 +102,31 @@ export function ScoresPanel({ detail }: { detail: HouseDetail }) {
       )}
       {subjective.length > 0 && (
         <p className="flex justify-end gap-4 pb-1 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1.5"><span className={cn('size-3 rounded-full', PERSON[slotOf(me?.id) ?? 'a'].dot)} />You · tap to score, tap again to clear</span>
+          <span className="flex items-center gap-1.5"><span className={cn('size-3 rounded-full', PERSON[slotOf(me?.id) ?? 'a'].dot)} />You · tap to score, tap again to clear, then Save</span>
           {other && <span className="flex items-center gap-1.5"><span className={cn('size-2.5 rounded-full ring-2', PERSON[slotOf(other.id) ?? 'b'].ring)} />{other.name}</span>}
         </p>
       )}
       <div className="grid lg:grid-cols-2 lg:gap-x-10">
         {subjective.map(c => (
           <ScoreRow key={c.id} label={c.label}
-            mine={me ? detail.scores[me.id]?.[c.id] : undefined}
+            mine={me ? mineOf(c.id) : undefined}
             other={other ? detail.scores[other.id]?.[c.id] : undefined}
             meSlot={slotOf(me?.id)} otherSlot={slotOf(other?.id)}
-            onPick={value => score.mutate({ cid: c.id, value })} />
+            onPick={value => setDraft(pickInto(draft, saved, c.id, value))} />
         ))}
       </div>
+      {pending.length > 0 && (
+        // Phone: floats just above the Add photo / Rate / Add note bar. Laptop: bottom right.
+        <div role="region" aria-label="Unsaved ratings"
+          className="fixed inset-x-3 bottom-[calc(8rem+env(safe-area-inset-bottom))] z-20 flex flex-wrap items-center gap-2 rounded-2xl border bg-card p-2 pl-4 shadow-lg lg:inset-x-auto lg:bottom-6 lg:right-6 lg:max-w-md">
+          <span className="flex-1 text-sm font-semibold">
+            {pending.length} unsaved rating{pending.length === 1 ? '' : 's'}
+          </span>
+          <Button variant="ghost" disabled={save.isPending} onClick={() => setDraft({})}>Discard</Button>
+          <Button disabled={save.isPending} onClick={() => save.mutate()}>{save.isPending ? 'Saving…' : 'Save'}</Button>
+          {save.isError && <p className="w-full text-sm text-destructive">Couldn't save: {save.error.message}</p>}
+        </div>
+      )}
       {auto.length > 0 && (
         <div className="space-y-1 pt-3">
           <h3 className="text-xs font-extrabold uppercase tracking-wide text-muted-foreground">Automatic</h3>

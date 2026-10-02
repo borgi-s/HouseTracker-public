@@ -55,16 +55,10 @@ from the Add page. Without systemd: `.venv/bin/python -m housetracker serve --ho
 
 ## Your commute anchor
 
-Commute times and the "km to" line are measured to a fixed anchor (work, a station,
-grandparents). Add one once:
-
-    curl -X POST http://<HT_HOST>:8765/api/anchors -H 'content-type: application/json' \
-      -d '{"label": "Work", "address": "Rådhuspladsen 1, 1550 København V", "lat": 55.6759, "lon": 12.5655, "kind": "fixed"}'
-
-Then press "Refresh from listing" on each house page to compute its commutes, or for a
-house added without a link:
-
-    curl -X POST http://<HT_HOST>:8765/api/houses/<house-id>/enrich
+Commute times and the "km to" line are measured to fixed places (work, a station,
+grandparents). Add them under Settings → Places: a name and an address with its postcode.
+With `HT_ORS_KEY` set, every house gets its travel times to a new place in the
+background. A house added later gets them when it is enriched.
 
 ## Limits
 

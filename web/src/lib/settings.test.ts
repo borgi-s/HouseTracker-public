@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { makeCriterion } from '@/test-utils'
-import { DEFAULT_CRITERIA, keyFrom, reorder } from './settings'
+import { DEFAULT_CRITERIA, keyFrom, reorder, weightShares } from './settings'
 
 test('defaults: 8 subjective + 3 automatic, price and ejerudgift lower-is-better', () => {
   expect(DEFAULT_CRITERIA.filter(c => c.kind === 'subjective').map(c => c.key)).toEqual(
@@ -21,4 +21,13 @@ test('reorder swaps neighbours and renumbers only what changed', () => {
 test('keyFrom makes a stable key from a label, Danish letters included', () => {
   expect(keyFrom('Støj & larm')).toBe('stoej_larm')
   expect(keyFrom('  Garden ')).toBe('garden')
+})
+
+test('weightShares: each active criterion as a whole percent of the active total', () => {
+  const list = [
+    makeCriterion({ id: 'a', weight: 2 }), makeCriterion({ id: 'b', weight: 1 }),
+    makeCriterion({ id: 'c', weight: 1 }), makeCriterion({ id: 'off', weight: 5, active: false }),
+  ]
+  expect(weightShares(list)).toEqual({ a: 50, b: 25, c: 25 })
+  expect(weightShares([makeCriterion({ id: 'z', weight: 0 })])).toEqual({ z: 0 })
 })

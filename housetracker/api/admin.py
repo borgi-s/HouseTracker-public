@@ -11,12 +11,12 @@ from pydantic import BaseModel
 
 from housetracker.api.deps import get_store, today
 from housetracker.api.houses import already_tracked
-from housetracker.enrich.enrich import enrich_house
+from housetracker.enrich.enrich import enrich_house, route_to_anchors
 from housetracker.enrich.geocode import AddressGeocoder
 from housetracker.enrich.route import ORSRouter
 from housetracker.lifecycle.boligsiden import BoligsidenClient
 from housetracker.lifecycle.lifecycle import run_lifecycle
-from housetracker.lifecycle.notify import from_env
+from housetracker.lifecycle.notify import from_env, hooks
 from housetracker.lifecycle.sold import HttpProber
 from housetracker.model import DuplicateHouse, ValidationError
 from housetracker.scrape.autoadapter import resolve
@@ -49,12 +49,102 @@ def list_anchors(store: HouseStore = Depends(get_store)) -> list[dict]:
     return [a.to_dict() for a in store.list_anchors()]
 
 
+class SettingsPatch(BaseModel):
+    notify_price_drops: bool | None = None
+    notify_open_houses: bool | None = None
+
+
+class AnchorPatch(BaseModel):
+    label: str | None = None
+    address: str | None = None
+
+
+def _locate(address: str) -> dict:
+    loc = AddressGeocoder().geocode(address)
+    if not loc or loc.get("lat") is None or loc.get("lon") is None:
+        raise HTTPException(status_code=422,
+                            detail=f"address not found: {address!r} (include the postcode)")
+    return {"lat": loc["lat"], "lon": loc["lon"]}
+
+
+def _route_new_place(a, request: Request, background: BackgroundTasks) -> None:
+    """Every located house gets its travel times to `a`, after the response has gone out."""
+    key = os.environ.get("HT_ORS_KEY")
+    if key and a.kind == "fixed" and a.lat is not None and a.lon is not None:
+        background.add_task(_route_later, request.app.state.db_path, a, ORSRouter(key))
+
+
 @router.post("/anchors", status_code=201)
-def add_anchor(body: AnchorIn, store: HouseStore = Depends(get_store)) -> dict:
+def add_anchor(body: AnchorIn, request: Request, background: BackgroundTasks,
+               store: HouseStore = Depends(get_store)) -> dict:
+    """An anchor given only an address is geocoded here."""
+    data = body.model_dump(exclude_none=True)
+    if body.address and (body.lat is None or body.lon is None):
+        data |= _locate(body.address)
     try:
-        return store.add_anchor(body.model_dump(exclude_none=True)).to_dict()
+        a = store.add_anchor(data)
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
+    _route_new_place(a, request, background)
+    return a.to_dict()
+
+
+@router.patch("/anchors/{anchor_id}")
+def update_anchor(anchor_id: str, body: AnchorPatch, request: Request,
+                  background: BackgroundTasks, store: HouseStore = Depends(get_store)) -> dict:
+    """A new address is geocoded and the travel times recomputed; a new label is just that."""
+    current = store.get_anchor(anchor_id)
+    if current is None:
+        raise HTTPException(status_code=404, detail=f"no anchor {anchor_id!r}")
+    fields = body.model_dump(exclude_none=True)
+    moved = body.address is not None and body.address != current.address
+    if moved:
+        fields |= _locate(body.address)
+    try:
+        a = store.update_anchor(anchor_id, fields)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    if moved:
+        _route_new_place(a, request, background)
+    return a.to_dict()
+
+
+def _route_later(db_path, anchor, ors) -> None:
+    """Background, own connection (see _download_later)."""
+    store = HouseStore(db_path)
+    try:
+        for h in store.list_houses():
+            if h.lat is not None and h.lon is not None:
+                route_to_anchors(h, store, ors, [anchor], now=today())
+    finally:
+        store.conn.close()
+
+
+@router.delete("/anchors/{anchor_id}")
+def delete_anchor(anchor_id: str, store: HouseStore = Depends(get_store)) -> dict:
+    if not store.delete_anchor(anchor_id):
+        raise HTTPException(status_code=404, detail=f"no anchor {anchor_id!r}")
+    return {"deleted": anchor_id}
+
+
+_SWITCHES = ("notify_price_drops", "notify_open_houses")
+
+
+def _settings(store: HouseStore) -> dict:
+    return {**{k: store.get_setting(k, "1") == "1" for k in _SWITCHES},
+            "discord_configured": from_env() is not None}   # never the URL: it is a secret
+
+
+@router.get("/settings")
+def read_settings(store: HouseStore = Depends(get_store)) -> dict:
+    return _settings(store)
+
+
+@router.patch("/settings")
+def update_settings(body: SettingsPatch, store: HouseStore = Depends(get_store)) -> dict:
+    for k, v in body.model_dump(exclude_none=True).items():
+        store.set_setting(k, "1" if v else "0")
+    return _settings(store)
 
 
 @router.post("/houses/{house_id}/enrich")
@@ -71,10 +161,10 @@ def enrich(house_id: str, store: HouseStore = Depends(get_store)) -> dict:
 def lifecycle(store: HouseStore = Depends(get_store)) -> dict:
     """The same sweep the daily timer runs, on demand. Best-effort by construction: a
     failed probe or lookup degrades to 'did less'."""
-    hook = from_env()
+    notify, notify_open = hooks(store)
     return run_lifecycle(store, HttpProber(), BoligsidenClient(), now=today(),
-                         geocoder=AddressGeocoder(), notify=hook,
-                         notify_open=hook and hook.open_houses)
+                         geocoder=AddressGeocoder(), notify=notify,
+                         notify_open=notify_open)
 
 
 def _download_later(db_path, house_id: str, media_refs, data_dir, replace=False) -> None:

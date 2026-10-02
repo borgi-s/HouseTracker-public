@@ -1,7 +1,8 @@
 # housetracker/lifecycle/notify.py
 """Pings to a Discord channel through a channel webhook: price drops and new open houses.
 The webhook URL is a secret: it comes from HT_DISCORD_WEBHOOK (~/.config/housetracker.env,
-loaded by the systemd units), never from the repo. Links point at HT_APP_URL."""
+loaded by the systemd units), never from the repo. Links point at HT_APP_URL. Which
+kinds are sent is a Settings switch (the `setting` table), read by hooks()."""
 from __future__ import annotations
 
 import json
@@ -93,3 +94,13 @@ class DiscordWebhook:
 def from_env() -> DiscordWebhook | None:
     url = os.environ.get("HT_DISCORD_WEBHOOK")
     return DiscordWebhook(url) if url else None
+
+
+def hooks(store) -> tuple:
+    """The sweep's (notify, notify_open): the webhook, minus what Settings switched off."""
+    hook = from_env()
+    if hook is None:
+        return None, None
+    on = lambda key: store.get_setting(key, "1") == "1"
+    return (hook if on("notify_price_drops") else None,
+            hook.open_houses if on("notify_open_houses") else None)

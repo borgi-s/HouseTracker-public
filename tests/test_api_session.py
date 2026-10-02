@@ -42,3 +42,23 @@ def test_duplicate_person_is_409(api):
     r = api.post("/api/persons", json={"name": "Alex"})
     assert r.status_code == 409
     assert [p["name"] for p in api.get("/api/persons").json()] == ["Alex"]
+
+
+def test_rename_person(api):
+    pid = api.post("/api/persons", json={"name": "Alx"}).json()["id"]
+    r = api.patch(f"/api/persons/{pid}", json={"name": "Alex"})
+    assert r.json() == {"id": pid, "name": "Alex"}
+    assert api.patch("/api/persons/nope", json={"name": "X"}).status_code == 404
+
+
+def test_rename_person_to_a_taken_name_is_409(api):
+    pid = api.post("/api/persons", json={"name": "Alex"}).json()["id"]
+    api.post("/api/persons", json={"name": "Sam"})
+    assert api.patch(f"/api/persons/{pid}", json={"name": "Sam"}).status_code == 409
+
+
+def test_delete_person(api):
+    pid = api.post("/api/persons", json={"name": "Alex"}).json()["id"]
+    assert api.delete(f"/api/persons/{pid}").status_code == 200
+    assert api.get("/api/persons").json() == []
+    assert api.delete(f"/api/persons/{pid}").status_code == 404

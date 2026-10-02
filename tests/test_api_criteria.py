@@ -108,3 +108,10 @@ def test_clear_score_removes_only_my_score_and_is_idempotent(api):
 def test_clear_score_requires_a_picked_person(api):
     hid = _house(api)
     assert api.delete(f"/api/houses/{hid}/scores/light").status_code == 401
+
+
+def test_delete_criterion(api):
+    api.post("/api/criteria", json={"key": "light", "label": "Light", "kind": "subjective"})
+    assert api.delete("/api/criteria/light").status_code == 200
+    assert api.get("/api/criteria?active_only=false").json() == []
+    assert api.delete("/api/criteria/light").status_code == 404

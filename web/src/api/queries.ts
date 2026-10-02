@@ -11,12 +11,14 @@ export const keys = {
   house: (id: string) => ['house', id] as const,
   criteria: (all: boolean) => ['criteria', all ? 'all' : 'active'] as const,
   anchors: ['anchors'] as const,
+  settings: ['settings'] as const,
 }
 
 export const useSession = () => useQuery({ queryKey: keys.session, queryFn: api.session })
 export const usePersons = () => useQuery({ queryKey: keys.persons, queryFn: api.persons })
 export const useHouses = () => useQuery({ queryKey: keys.houses, queryFn: api.houses })
 export const useAnchors = () => useQuery({ queryKey: keys.anchors, queryFn: api.anchors })
+export const useSettings = () => useQuery({ queryKey: keys.settings, queryFn: api.settings })
 /** all=false: active criteria only (what scoring shows); all=true: Settings. */
 export const useCriteria = (all = false) =>
   useQuery({ queryKey: keys.criteria(all), queryFn: () => api.criteria(!all) })
